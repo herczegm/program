@@ -21,4 +21,10 @@ export const competenciesService = {
   softDelete(id: string) {
     return http<Competency>(`/competencies/${id}/delete`, { method: 'PATCH' })
   },
+  reorder(ids: string[]) {
+    return http('competencies/reorder', {
+      method: 'PATCH',
+      body: JSON.stringify({ ids }),
+    })
+  },
 }

@@ -8,6 +8,8 @@ import { authService } from './services/authService'
 import { clearToken } from './state/authStore'
 import type { Me } from './state/authStore'
 import { AdminPage } from './pages/AdminPage'
+import { NavBar } from './components/NavBar'
+import { RequireAdmin } from './components/RequireAdmin'
 
 export default function App() {
   const [me, setMe] = useState<Me | null>(null)
@@ -28,24 +30,22 @@ export default function App() {
       {me ? (
         <BrowserRouter>
           <div style={{ display: 'grid', gap: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                Bejelentkezve: <b>{me.username}</b> ({me.role})
-              </div>
-              <button
-                onClick={() => {
-                  clearToken()
-                  setMe(null)
-                }}
-              >
-                Kilépés
-              </button>
-            </div>
+            <NavBar
+              me={me}
+              onLogout={() => {
+                clearToken()
+                setMe(null)
+              }}
+            />
 
             <Routes>
               <Route path="/" element={<MatrixPage meRole={me.role} />} />
               <Route path="/users/:id" element={<UserDetailPage meRole={me.role} />} />
-              <Route path="/admin" element={<AdminPage meRole={me.role} />} />
+              <Route path="/admin" element={
+                  <RequireAdmin role={me.role}>
+                    <AdminPage meRole={me.role} />
+                  </RequireAdmin>
+                } />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </div>
