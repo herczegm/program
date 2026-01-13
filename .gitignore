@@ -48,3 +48,16 @@ logs/
 *.seed
 data/
 pgdata/
+
+# Monorepo / tooling
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+**/.pnpm-store
+**/.turbo
+**/.vite
+
+# Prisma
+**/prisma/dev.db
+**/prisma/*.db
