@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { competencyGroupsService } from '../services/competencyGroupsService'
 import { competenciesService, type Competency } from '../services/competenciesService'
+import { type CompetencyGroupModel } from '../models/CompetencyGroupModel';
 
-type Group = { id: string; name: string; sortOrder: number }
+type Group = CompetencyGroupModel
 
 function move<T>(arr: T[], from: number, to: number) {
   const copy = arr.slice()
@@ -25,6 +26,10 @@ export function AdminPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
 
   const [newName, setNewName] = useState('')
   const [newType, setNewType] = useState<'CORE' | 'CUSTOM'>('CUSTOM')
+
+  const [newGroupName, setNewGroupName] = useState('')
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
+  const [editingGroupName, setEditingGroupName] = useState('')
 
   const groupsSorted = useMemo(() => {
     return groups.slice().sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
@@ -106,7 +111,36 @@ export function AdminPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
         {/* LEFT: Groups */}
         <div style={{ border: '1px solid #ddd', borderRadius: 12, padding: 12 }}>
           <div style={{ fontWeight: 800, marginBottom: 10 }}>Competency Groups</div>
-
+          <div style={{ border: '1px solid #eee', borderRadius: 12, padding: 10, marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>New group</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                placeholder="name"
+                style={{ flex: 1 }}
+              />
+              <button
+                disabled={!newGroupName.trim()}
+                onClick={async () => {
+                  try {
+                    setError('')
+                    const created = await competencyGroupsService.create({
+                      name: newGroupName,
+                      sortOrder: groupsSorted.length,
+                    })
+                    setGroups((prev) => [...prev, created])
+                    setNewGroupName('')
+                    setSelectedGroupId(created.id)
+                  } catch (e: any) {
+                    setError(e?.message ?? String(e))
+                  }
+                }}
+              >
+                Create
+              </button>
+            </div>
+          </div>
           <div style={{ display: 'grid', gap: 6 }}>
             {groupsSorted.map((g, idx) => {
               const selected = g.id === selectedGroupId
@@ -140,7 +174,7 @@ export function AdminPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
                     {g.name}
                   </button>
 
-                  <div style={{ display: 'flex', gap: 6 }}>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <button
                       disabled={idx === 0}
                       onClick={() => reorderGroups(move(groupsSorted, idx, idx - 1))}
@@ -154,6 +188,38 @@ export function AdminPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
                       title="Move down"
                     >
                       ↓
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setEditingGroupId(g.id)
+                        setEditingGroupName(g.name)
+                      }}
+                      title="Rename"
+                    >
+                      ✎
+                    </button>
+
+                    <button
+                      onClick={async () => {
+                        if (!confirm('Delete group? (soft delete)')) return
+                        try {
+                          setError('')
+                          await competencyGroupsService.softDelete(g.id)
+                          // ha törölted a kiválasztottat, váltsunk másikra
+                          setGroups((prev) => prev.filter((x) => x.id !== g.id))
+                          setComps((prev) => prev.filter((c) => c.groupId !== g.id))
+                          if (selectedGroupId === g.id) {
+                            const next = groupsSorted.find((x) => x.id !== g.id)?.id ?? ''
+                            setSelectedGroupId(next)
+                          }
+                        } catch (e: any) {
+                          setError(e?.message ?? String(e))
+                        }
+                      }}
+                      title="Delete"
+                    >
+                      🗑
                     </button>
                   </div>
                 </div>
@@ -239,6 +305,37 @@ export function AdminPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
           )}
         </div>
       </div>
+      {editingGroupId ? (
+        <div style={{ border: '1px solid #ddd', borderRadius: 12, padding: 12 }}>
+          <div style={{ fontWeight: 800, marginBottom: 8 }}>Rename group</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input
+              value={editingGroupName}
+              onChange={(e) => setEditingGroupName(e.target.value)}
+              style={{ minWidth: 260 }}
+            />
+            <button
+              disabled={!editingGroupName.trim()}
+              onClick={async () => {
+                try {
+                  setError('')
+                  const updated = await competencyGroupsService.update(editingGroupId, {
+                    name: editingGroupName.trim(),
+                  })
+                  setGroups((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
+                  setEditingGroupId(null)
+                } catch (e: any) {
+                  setError(e?.message ?? String(e))
+                }
+              }}
+            >
+              Save
+            </button>
+            <button onClick={() => setEditingGroupId(null)}>Cancel</button>
+          </div>
+        </div>
+      ) : null}
+
     </div>
   )
 }

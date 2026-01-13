@@ -28,23 +28,30 @@ export class CompetencyGroupsController {
 
   @UseGuards(RolesGuard)
   @Roles('ADMIN')
+  @Patch('reorder')
+  reorder(@Body() dto: ReorderCompetencyGroupsDto) {
+    return this.service.reorder(dto.ids)
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateCompetencyGroupDto) {
     return this.service.update(id, dto)
   }
 
-  @UseGuards(RolesGuard)
-  @Roles('ADMIN')
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.service.softDelete(id)
-  }
+  // @UseGuards(RolesGuard)
+  // @Roles('ADMIN')
+  // @Delete(':id')
+  // remove(@Param('id') id: string) {
+  //   return this.service.softDelete(id)
+  // }
 
   @UseGuards(RolesGuard)
   @Roles('ADMIN')
-  @Put('reorder')
-  reorder(@Body() dto: ReorderCompetencyGroupsDto) {
-    return this.service.reorder(dto.ids)
+  @Patch(':id/delete')
+  softDelete(@Param('id') id: string) {
+    return this.service.softDelete(id)
   }
 
   @Get('tree')

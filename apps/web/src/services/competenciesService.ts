@@ -12,17 +12,21 @@ export const competenciesService = {
   list() {
     return http<Competency[]>('/competencies')
   },
+
   create(dto: { name: string; type?: 'CORE' | 'CUSTOM'; groupId: string; sortOrder?: number }) {
     return http<Competency>('/competencies', { method: 'POST', body: JSON.stringify(dto) })
   },
+
   update(id: string, dto: Partial<{ name: string; type: 'CORE' | 'CUSTOM'; groupId: string; sortOrder: number; isDeleted: boolean }>) {
     return http<Competency>(`/competencies/${id}`, { method: 'PATCH', body: JSON.stringify(dto) })
   },
+
   softDelete(id: string) {
     return http<Competency>(`/competencies/${id}/delete`, { method: 'PATCH' })
   },
+
   reorder(ids: string[]) {
-    return http('competencies/reorder', {
+    return http<void>('competencies/reorder', {
       method: 'PATCH',
       body: JSON.stringify({ ids }),
     })
