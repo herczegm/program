@@ -1,0 +1,5 @@
+indítás: 
+- apps/api: pnpm run start:dev
+- apps/web: pnpm dev
+
+- pnpm exec prisma generate

@@ -1,0 +1,108 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id String @id @default(uuid())
+
+  adGuid   String @unique
+  username String @unique
+
+  email       String?
+  displayName String?
+
+  role Role @default(USER)
+
+  competencyLevels UserCompetencyLevel[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  actedChanges  CompetencyLevelChange[] @relation("ActorChanges")
+  targetChanges CompetencyLevelChange[] @relation("TargetChanges")
+}
+
+model CompetencyGroup {
+  id        String  @id @default(uuid())
+  name      String  @db.Citext
+  sortOrder Int     @default(0)
+  isDeleted Boolean @default(false)
+
+  competencies Competency[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name])
+  @@index([sortOrder])
+}
+
+enum CompetencyType {
+  CORE
+  CUSTOM
+}
+
+model Competency {
+  id   String         @id @default(uuid())
+  name String         @db.Citext
+  type CompetencyType @default(CUSTOM)
+
+  groupId String
+  group   CompetencyGroup @relation(fields: [groupId], references: [id])
+
+  sortOrder Int     @default(0)
+  isDeleted Boolean @default(false)
+
+  userLevels UserCompetencyLevel[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  levelChanges CompetencyLevelChange[]
+
+  @@unique([name]) // globálisan egyedi név (CORE és CUSTOM sem ütközhet)
+  @@index([groupId, sortOrder])
+  @@index([type])
+}
+
+model UserCompetencyLevel {
+  userId       String
+  competencyId String
+  level        Int    @default(0)
+
+  user       User       @relation(fields: [userId], references: [id])
+  competency Competency @relation(fields: [competencyId], references: [id])
+
+  updatedAt DateTime @updatedAt
+
+  @@id([userId, competencyId])
+  @@index([competencyId])
+}
+
+model CompetencyLevelChange {
+  id           String   @id @default(uuid())
+
+  actorUserId  String
+  targetUserId String
+  competencyId String
+
+  oldLevel     Int
+  newLevel     Int
+
+  createdAt    DateTime @default(now())
+
+  actor      User       @relation("ActorChanges", fields: [actorUserId], references: [id])
+  target     User       @relation("TargetChanges", fields: [targetUserId], references: [id])
+  competency Competency @relation(fields: [competencyId], references: [id])
+
+  @@index([targetUserId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([competencyId, createdAt])
+}

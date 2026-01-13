@@ -1,0 +1,50 @@
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# --- Node / package managers ---
+node_modules/
+.pnpm-store/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Build outputs ---
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# --- Vite ---
+apps/web/dist/
+apps/web/.vite/
+
+# --- Nest ---
+apps/api/dist/
+apps/api/.nest/
+
+# --- Env files (NEVER COMMIT) ---
+.env
+.env.*
+!.env.example
+
+# --- Prisma ---
+#apps/api/prisma/migrations/**/*
+#!apps/api/prisma/migrations/.gitkeep
+# ha akarod verziózni a migrációkat (ajánlott), akkor TÖRÖLD a fenti 2 sort és hagyd:
+# apps/api/prisma/migrations/  -> NE legyen ignore-olva!
+
+# --- Logs ---
+logs/
+*.log
+
+# --- Docker volumes / local data ---
+*.pid
+*.seed
+data/
+pgdata/
