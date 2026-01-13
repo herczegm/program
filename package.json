@@ -5,7 +5,7 @@
   "scripts": {
     "dev:api": "pnpm -C apps/api start:dev",
     "dev:web": "pnpm -C apps/web dev",
-    "dev": "pnpm -r --parallel dev",
+    "dev": "nest start --watch",
 
     "build:api": "pnpm -C apps/api build",
     "build:web": "pnpm -C apps/web build",
