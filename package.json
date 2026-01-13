@@ -1,0 +1,17 @@
+{
+  "name": "program",
+  "private": true,
+  "packageManager": "pnpm@10.28.0",
+  "scripts": {
+    "dev:api": "pnpm -C apps/api start:dev",
+    "dev:web": "pnpm -C apps/web dev",
+    "dev": "pnpm -r --parallel dev",
+
+    "build:api": "pnpm -C apps/api build",
+    "build:web": "pnpm -C apps/web build",
+    "build": "pnpm -r build",
+
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test"
+  }
+}
