@@ -289,6 +289,8 @@ export function AdminPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
                     c={c}
                     idx={idx}
                     max={compsInGroup.length}
+                    groups={groupsSorted}
+                    getGroupSize={(groupId) => comps.filter((x) => x.groupId ===groupId && x.id !== c.id).length}
                     onMoveUp={() => reorderComps(move(compsInGroup, idx, idx - 1))}
                     onMoveDown={() => reorderComps(move(compsInGroup, idx, idx + 1))}
                     onUpdated={(patch) => setComps((prev) => prev.map((x) => (x.id === c.id ? { ...x, ...patch } : x)))}
@@ -344,6 +346,8 @@ function CompetencyRow({
   c,
   idx,
   max,
+  groups,
+  getGroupSize,
   onMoveUp,
   onMoveDown,
   onUpdated,
@@ -353,6 +357,8 @@ function CompetencyRow({
   c: Competency
   idx: number
   max: number
+  groups: Group[]
+  getGroupSize: (groupId: string) => number
   onMoveUp: () => void
   onMoveDown: () => void
   onUpdated: (patch: Partial<Competency>) => void
@@ -360,11 +366,24 @@ function CompetencyRow({
   onError: (msg: string) => void
 }) {
   const [name, setName] = useState(c.name)
+  const [type, setType] = useState<'CORE' | 'CUSTOM'>(c.type)
+  const [groupId, setGroupId] = useState<string>(c.groupId)
 
   return (
     <div style={{ border: '1px solid #eee', borderRadius: 12, padding: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
       <input value={name} onChange={(e) => setName(e.target.value)} style={{ minWidth: 260 }} />
-      <span style={{ fontSize: 12, opacity: 0.7 }}>{c.type}</span>
+      <select value={type} onChange={(e) => setType(e.target.value as any)}>
+        <option value="CUSTOM">CUSTOM</option>
+        <option value="CORE">CORE</option>
+      </select>
+
+      <select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+        {groups.map((g) => (
+          <option key={g.id} value={g.id}>
+            {g.name}
+          </option>
+        ))}
+      </select>
 
       <div style={{ display: 'flex', gap: 6 }}>
         <button disabled={idx === 0} onClick={onMoveUp} title="Move up">↑</button>
@@ -376,13 +395,32 @@ function CompetencyRow({
           onClick={async () => {
             try {
               onError('')
-              const updated = await competenciesService.update(c.id, { name: name.trim() })
+
+              const next: any = {}
+              const trimmed = name.trim()
+
+              if (trimmed && trimmed !== c.name) next.name = trimmed
+              if (type !== c.type) next.type = type
+
+              // group váltás: a cél group végére rakjuk
+              if (groupId !== c.groupId) {
+                next.groupId = groupId
+                next.sortOrder = getGroupSize(groupId)
+              }
+
+              // ha semmi nem változott, ne hívjunk API-t
+              if (Object.keys(next).length === 0) return
+
+              const updated = await competenciesService.update(c.id, next)
               onUpdated(updated)
             } catch (e: any) {
               onError(e?.message ?? String(e))
             }
           }}
-          disabled={!name.trim() || name.trim() === c.name}
+          disabled={
+            (!name.trim() && name !== c.name) ||
+            (name.trim() === c.name && type === c.type && groupId === c.groupId)
+          }
         >
           Save
         </button>
