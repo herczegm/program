@@ -5,6 +5,7 @@ export type MatrixFiltersState = {
   type: 'ALL' | 'CORE' | 'CUSTOM'
   groupId: string | 'ALL'
   includeAdmins: boolean
+  includeDeleted: boolean
 }
 
 export function MatrixFilters({
@@ -71,6 +72,15 @@ export function MatrixFilters({
           onChange={(e) => onChange({ ...value, includeAdmins: e.target.checked })}
         />
         Include admins
+      </label>
+      <label style={{ ...lbl, gap: 6 }}>
+        <input
+          type="checkbox"
+          checked={value.includeDeleted}
+          onChange={(e) => onChange({ ...value, includeDeleted: e.target.checked })}
+          disabled={disabled}
+        />
+        Include deleted
       </label>
     </div>
   )

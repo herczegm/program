@@ -50,7 +50,7 @@ export class UserLevelsService {
     const newLevel = level
 
     if (oldLevel === newLevel) {
-      return { userId: targetUserId, competencyId, level: newLevel, updateAt: new Date().toISOString() }
+      return { userId: targetUserId, competencyId, level: newLevel, updatedAt: new Date().toISOString() }
     }
 
     const result = await this.prisma.$transaction(async (tx) => {
@@ -111,32 +111,34 @@ export class UserLevelsService {
       })
       .filter((x) => x.oldLevel !== x.newLevel)
 
-    await this.prisma.$transaction(async (tx) => {
-      // upsert mind
-      await Promise.all(
-        cells.map((c) =>
-          tx.userCompetencyLevel.upsert({
-            where: { userId_competencyId: { userId: c.userId, competencyId: c.competencyId } },
-            create: { userId: c.userId, competencyId: c.competencyId, level: c.level },
-            update: { level: c.level },
-          }),
-        ),
-      )
+    // csak a változottakat upserteljük (gyorsabb is)
+    const upserts = changes.map((c) =>
+      this.prisma.userCompetencyLevel.upsert({
+        where: { userId_competencyId: { userId: c.userId, competencyId: c.competencyId } },
+        create: { userId: c.userId, competencyId: c.competencyId, level: c.newLevel },
+        update: { level: c.newLevel },
+      }),
+    )
 
-      if (changes.length) {
-        await tx.competencyLevelChange.createMany({
-          data: changes.map((x) => ({
-            actorUserId,
-            targetUserId: x.userId,
-            competencyId: x.competencyId,
-            oldLevel: x.oldLevel,
-            newLevel: x.newLevel,
-          })),
-        })
-      }
-    })
+    const logs = changes.length
+      ? this.prisma.competencyLevelChange.createMany({
+        data: changes.map((x) => ({
+          actorUserId,
+          targetUserId: x.userId,
+          competencyId: x.competencyId,
+          oldLevel: x.oldLevel,
+          newLevel: x.newLevel,
+        })),
+      })
+      : null
 
-    return { updated: cells.length, logged: changes.length }
+    if (logs) {
+      await this.prisma.$transaction([...upserts, logs])
+    } else {
+      await this.prisma.$transaction(upserts)
+    }
+
+    return { requested: cells.length, updated: changes.length, logged: changes.length }
   }
 
 }

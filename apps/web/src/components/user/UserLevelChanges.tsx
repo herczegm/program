@@ -3,6 +3,7 @@ import { auditService, type LevelChange } from '../../services/auditService'
 
 export function UserLevelChanges({ userId }: { userId: string }) {
   const [items, setItems] = useState<LevelChange[]>([])
+  const [take, setTake] = useState(50)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -10,12 +11,12 @@ export function UserLevelChanges({ userId }: { userId: string }) {
     let alive = true
     setLoading(true)
     setError('')
-    auditService.userLevelChanges(userId, 80)
+    auditService.userLevelChanges(userId, take)
       .then((x) => alive && setItems(x))
       .catch((e: any) => alive && setError(e?.message ?? String(e)))
       .finally(() => alive && setLoading(false))
     return () => { alive = false }
-  }, [userId])
+  }, [userId, take])
 
   return (
     <div style={{ borderTop: '1px solid #eee', paddingTop: 10 }}>
@@ -45,6 +46,15 @@ export function UserLevelChanges({ userId }: { userId: string }) {
             </div>
           </div>
         ))}
+        {items.length >= take ? (
+          <button
+            onClick={() => setTake((t) => Math.min(t + 50, 200))}
+            disabled={loading}
+            style={{ marginTop: 8 }}
+          >
+            Több betöltése
+          </button>
+        ) : null}
         {(!loading && items.length === 0) ? <div style={{ fontSize: 12, opacity: 0.7 }}>Nincs változás.</div> : null}
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { getToken } from '../state/authStore'
+import { getToken, clearToken } from '../state/authStore'
 
 const base = import.meta.env.VITE_API_BASE ?? '/api'
 
@@ -27,7 +27,13 @@ export async function http<T>(path: string, init: RequestInit = {}): Promise<T> 
 
   const res = await fetch(`${base}${path}`, { ...init, headers })
 
-  if (!res.ok) throw await parseError(res)
+  if (!res.ok) {
+    // 401 -> global logout
+    if (res.status === 401) {
+      clearToken()
+      window.dispatchEvent(new Event('auth:logout'))
+    }
+    throw await parseError(res)}
   if (res.status === 204) return undefined as T
 
   return (await res.json()) as T

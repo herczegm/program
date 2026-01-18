@@ -32,6 +32,7 @@ export type FastMatrixFilters = {
   groupIds?: string[]
   type?: 'CORE' | 'CUSTOM'
   includeAdmins?: boolean
+  includeDeleted?: boolean
 }
 
 @Injectable()
@@ -40,12 +41,13 @@ export class MatrixService {
 
   async getFastMatrix(filters: FastMatrixFilters = {}) {
     const includeAdmins = filters.includeAdmins ?? true
+    const includeDeleted = !!filters.includeDeleted
 
     // 1) Kompetenciák (oszlopok) fix sorrendben
     const competencies = await this.prisma.competency.findMany({
       where: { 
-        isDeleted: false,
-        group: { isDeleted: false },
+        ...(includeDeleted ? {} : { isDeleted: false }),
+        ...(includeDeleted ? {} : { group: { isDeleted: false } }),
         ...(filters.groupIds?.length ? { groupId: { in: filters.groupIds } } : {}),
         ...(filters.type ? { type: filters.type as CompetencyType } : {}),
       },
@@ -146,6 +148,7 @@ export class MatrixService {
           groupIds: filters.groupIds ?? null,
           type: filters.type ?? null,
           includeAdmins,
+          includeDeleted,
         },
       },
       groupHeaders,

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { matrixService, type MatrixFast } from '../services/matrixService'
 import { MatrixTable, type EditMode } from '../components/matrix/MatrixTable'
 import { usersService } from '../services/usersService'
@@ -16,8 +16,59 @@ function keyOf(userId: string, competencyId: string) {
   return `${userId}:${competencyId}`
 }
 
+function parseBool(v: string | null | undefined, defaultValue: boolean) {
+  if (v == null) return defaultValue
+  const s = v.trim().toLowerCase()
+  if (s === '1' || s === 'true' || s === 'yes') return true
+  if (s === '0' || s === 'false' || s === 'no') return false
+  return defaultValue
+}
+
+function parseFiltersFromUrl(sp: URLSearchParams): MatrixFiltersState {
+  const q = sp.get('q') ?? ''
+  const typeRaw = sp.get('type')
+  const type: MatrixFiltersState['type'] =
+    typeRaw === 'CORE' || typeRaw === 'CUSTOM' ? typeRaw : 'ALL'
+
+  const groupIdRaw = sp.get('groupId')
+  const groupId: MatrixFiltersState['groupId'] =
+    groupIdRaw && groupIdRaw.trim() ? (groupIdRaw as any) : 'ALL'
+
+  const includeAdmins = parseBool(sp.get('includeAdmins'), true)
+  const includeDeleted = parseBool(sp.get('includeDeleted'), false)
+
+  return { q, type, groupId, includeAdmins, includeDeleted }
+}
+
+function filtersToUrlParams(f: MatrixFiltersState): URLSearchParams {
+  const sp = new URLSearchParams()
+
+  const q = f.q.trim()
+  if (q) sp.set('q', q)
+  if (f.type !== 'ALL') sp.set('type', f.type)
+  if (f.groupId !== 'ALL') sp.set('groupId', String(f.groupId))
+
+  // default: includeAdmins = true, includeDeleted = false
+  if (f.includeAdmins === false) sp.set('includeAdmins', '0')
+  if (f.includeDeleted === true) sp.set('includeDeleted', '1')
+
+  return sp
+}
+
+function sameFilters(a: MatrixFiltersState, b: MatrixFiltersState) {
+  return (
+    a.q === b.q &&
+    a.type === b.type &&
+    a.groupId === b.groupId &&
+    a.includeAdmins === b.includeAdmins &&
+    a.includeDeleted === b.includeDeleted
+  )
+}
+
 export function MatrixPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
   const navigate = useNavigate()
+  const [sp, setSp] = useSearchParams()
+  const urlFilters = useMemo(() => parseFiltersFromUrl(sp), [sp.toString()])
   const [data, setData] = useState<MatrixFast | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -28,12 +79,7 @@ export function MatrixPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
   const [saving, setSaving] = useState(false)
 
   const [groups, setGroups] = useState<Array<{ id: string; name: string }>>([])
-  const [filters, setFilters] = useState<MatrixFiltersState>({
-    q: '',
-    type: 'ALL',
-    groupId: 'ALL',
-    includeAdmins: true,
-  })
+  const [filters, setFilters] = useState<MatrixFiltersState>(urlFilters)
 
   const editable = meRole === 'ADMIN'
 
@@ -51,7 +97,7 @@ export function MatrixPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
 
       // userIds a q alapján:
       let userIds: string[] | undefined = undefined
-      const q = debouncedQ.trim()
+      const q = (filtersNow.q ?? '').trim()
       if (q) {
         const found = await usersService.list(q)
         userIds = found.map((u) => u.id)
@@ -75,6 +121,7 @@ export function MatrixPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
         groupIds: filtersNow.groupId !== 'ALL' ? [filtersNow.groupId] : undefined,
         type: filtersNow.type !== 'ALL' ? (filtersNow.type as any) : undefined,
         includeAdmins: filtersNow.includeAdmins,
+        includeDeleted: filtersNow.includeDeleted,
       })
 
       setData(m)
@@ -90,15 +137,27 @@ export function MatrixPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
   useBeforeUnload(mode === 'bulk' && dirtyCount > 0)
 
   useEffect(() => {
+    setFilters((prev) => (sameFilters(prev, urlFilters) ? prev : urlFilters))
+  }, [urlFilters])
+
+  useEffect(() => {
+    const next = filtersToUrlParams(filters).toString()
+    const cur = sp.toString()
+    const nextStr = next.toString()
+    if (nextStr !== cur) setSp(next, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters])
+
+  useEffect(() => {
     competencyGroupsService.listActive()
       .then((gs) => setGroups(gs.map((g) => ({ id: g.id, name: g.name }))))
       .catch(() => setGroups([]))
   }, [])
 
   useEffect(() => {
-    loadWith(filters)
+    loadWith({ ...filters, q: debouncedQ })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.type, filters.groupId, filters.includeAdmins, debouncedQ])
+  }, [filters.type, filters.groupId, filters.includeAdmins, filters.includeDeleted, debouncedQ])
 
   function applyLocalCell(userId: string, competencyId: string, level: number) {
     if (!data) return
@@ -201,7 +260,7 @@ export function MatrixPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
         onChange={(next) => {
           // bulk módban ne veszítsünk mentetlen változást véletlen filter váltással:
           if (mode === 'bulk' && Object.keys(dirty).length > 0) {
-          if (!confirm('Van mentetlen módosításod. Eldobod és szűrsz?')) return
+            if (!confirm('Van mentetlen módosításod. Eldobod és szűrsz?')) return
             setDirty({})
           }
           setFilters(next)
@@ -261,7 +320,10 @@ export function MatrixPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
         mode={mode}
         dirty={dirty}
         onCellClick={handleCellClick}
-        onUserClick={(userId) => navigate(`/users/${userId}`)}
+        onUserClick={(userId) => {
+          const qs = filtersToUrlParams(filters).toString()
+          navigate(`/users/${userId}${qs ? `?${qs}` : ''}`)
+        }}
       />
 
       <SaveBar

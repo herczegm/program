@@ -28,13 +28,16 @@ export class MatrixController {
     @Query('groupIds') groupIds?: string,
     @Query('type') type?: 'CORE' | 'CUSTOM',
     @Query('includeAdmins') includeAdmins?: string,
+    @Query('includeDeleted') includeDeleted?: string,
   ) {
     const ia = includeAdmins === undefined ? undefined : includeAdmins === '1' || includeAdmins === 'true'
+    const incDel = includeDeleted === '1' || includeDeleted === 'true' || includeDeleted === 'yes'
     return this.service.getFastMatrix({
       userIds: splitCsv(userIds),
       groupIds: splitCsv(groupIds),
       type: type === 'CORE' || type === 'CUSTOM' ? type : undefined,
       includeAdmins: ia,
+      includeDeleted: incDel,
     })
   }
 

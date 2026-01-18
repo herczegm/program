@@ -48,7 +48,7 @@ export function VirtualMatrixTable({
   mode: EditMode
   dirty: DirtyMap
   onCellClick: (userId: string, competencyId: string, nextLevel: number) => void
-  onUserClick?: (userId: string) => void 
+  onUserClick?: (userId: string) => void
 }) {
   const parentRef = useRef<HTMLDivElement | null>(null)
 
@@ -225,20 +225,21 @@ export function VirtualMatrixTable({
               {/* User cell */}
               <div style={{ width: USER_COL_W, padding: 8 }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
-                    <button
-                        onClick={() => onUserClick?.(r.userId)}
-                        style={{
-                            background: 'transparent',
-                            border: 'none',
-                            padding: 0,
-                            cursor: onUserClick ?  'pointer' : 'default',
-                            textAlign: 'left',
-                            fontWeight: 700,
-                        }}
-                        title='User detail'
-                    >
-                        {r.username}
-                    </button>
+                  <button
+                    type='button'
+                    onClick={() => onUserClick?.(r.userId)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      padding: 0,
+                      cursor: onUserClick ? 'pointer' : 'default',
+                      textAlign: 'left',
+                      fontWeight: 700,
+                    }}
+                    title='User detail'
+                  >
+                    {r.username}
+                  </button>
                   <span style={{ fontSize: 12, opacity: 0.7 }}>{r.role}</span>
                 </div>
                 {r.displayName ? <div style={{ fontSize: 12, opacity: 0.75 }}>{r.displayName}</div> : null}
@@ -292,10 +293,10 @@ export function VirtualMatrixTable({
                         }
                       }}
                       onFocus={(e) => {
-                        ;(e.currentTarget as HTMLDivElement).style.boxShadow = 'inset 0 0 0 2px #111'
+                        ; (e.currentTarget as HTMLDivElement).style.boxShadow = 'inset 0 0 0 2px #111'
                       }}
                       onBlur={(e) => {
-                        ;(e.currentTarget as HTMLDivElement).style.boxShadow = ''
+                        ; (e.currentTarget as HTMLDivElement).style.boxShadow = ''
                       }}
                       title={
                         canEdit
