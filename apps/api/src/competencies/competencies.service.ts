@@ -1,8 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import { CreateCompetencyDto } from './dto/create-competency.dto'
 import { UpdateCompetencyDto } from './dto/update-competency.dto'
 import { CompetencyType } from '@prisma/client'
+import { CreateCustomCompetencyDto } from './dto/create-custom-competency.dto'
 
 type ByGroupOptions = { type?: 'CORE' | 'CUSTOM'; includeDeleted?: boolean }
 
@@ -131,7 +132,7 @@ export class CompetenciesService {
   
   async suggest(q: string) {
     const query = q.trim()
-    if (query.length < 2) return []
+    // if (query.length < 2) return []
 
     return this.prisma.competency.findMany({
       where: {
@@ -149,4 +150,50 @@ export class CompetenciesService {
       take: 20,
     })
   }
+
+  async createCustom(actorUserId: string, dto: CreateCustomCompetencyDto) {
+    const group = await this.prisma.competencyGroup.findUnique({ where: { id: dto.groupId } })
+    if (!group || group.isDeleted) throw new BadRequestException('Invalid groupId')
+
+    const name = dto.name.trim()
+    if (name.length < 2) throw new BadRequestException('Name must be at least 2 characters')
+
+    // Citext + @@unique([name]) miatt ez case-insensitive egyezést ad
+    const existing = await this.prisma.competency.findFirst({
+      where: { name },
+      select: { id: true, type: true, isDeleted: true },
+    })
+
+    if (existing) {
+      if (existing.type === 'CORE') {
+        // ✅ Acceptance: CORE név ütközés -> 409 + érthető
+        throw new ConflictException('Ilyen névvel már létezik CORE kompetencia. Válassz másik nevet.')
+      }
+      // custom/egyéb ütközés is 409 (DB unique miatt úgyis)
+      throw new ConflictException(existing.isDeleted
+        ? 'Ilyen nevű kompetencia már létezett (törölve). Válassz másik nevet.'
+        : 'Ilyen nevű kompetencia már létezik.')
+    }
+
+    // group végére
+    const agg = await this.prisma.competency.aggregate({
+      where: { groupId: dto.groupId, isDeleted: false, group: { isDeleted: false } },
+      _max: { sortOrder: true },
+    })
+    const sortOrder = (agg._max.sortOrder ?? -1) + 1
+
+    return this.prisma.competency.create({
+      data: {
+        name,
+        type: 'CUSTOM',
+        groupId: dto.groupId,
+        sortOrder,
+        status: 'ACTIVE',
+        isDeleted: false,
+        createdByUserId: actorUserId, // ✅ “ki vette fel”
+      },
+      include: { group: true, createdByUser: { select: { id: true, username: true } } },
+    })
+  }
+
 }

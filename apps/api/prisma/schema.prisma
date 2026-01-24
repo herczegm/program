@@ -11,6 +11,11 @@ enum Role {
   ADMIN
 }
 
+enum CompetencyStatus {
+  ACTIVE
+  ARCHIVED
+}
+
 model User {
   id String @id @default(uuid())
 
@@ -24,8 +29,10 @@ model User {
 
   competencyLevels UserCompetencyLevel[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdCompetencies Competency[] @relation("CompetencyCreatedBy")
+
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
   actedChanges  CompetencyLevelChange[] @relation("ActorChanges")
   targetChanges CompetencyLevelChange[] @relation("TargetChanges")
 }
@@ -63,8 +70,13 @@ model Competency {
 
   userLevels UserCompetencyLevel[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  status CompetencyStatus @default(ACTIVE)
+
+  createdByUserId String?
+  createdByUser   User?   @relation("CompetencyCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  createdAt    DateTime                @default(now())
+  updatedAt    DateTime                @updatedAt
   levelChanges CompetencyLevelChange[]
 
   @@unique([name]) // globálisan egyedi név (CORE és CUSTOM sem ütközhet)
@@ -87,16 +99,16 @@ model UserCompetencyLevel {
 }
 
 model CompetencyLevelChange {
-  id           String   @id @default(uuid())
+  id String @id @default(uuid())
 
   actorUserId  String
   targetUserId String
   competencyId String
 
-  oldLevel     Int
-  newLevel     Int
+  oldLevel Int
+  newLevel Int
 
-  createdAt    DateTime @default(now())
+  createdAt DateTime @default(now())
 
   actor      User       @relation("ActorChanges", fields: [actorUserId], references: [id])
   target     User       @relation("TargetChanges", fields: [targetUserId], references: [id])

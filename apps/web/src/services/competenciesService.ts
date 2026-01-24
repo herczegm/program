@@ -31,4 +31,16 @@ export const competenciesService = {
       body: JSON.stringify({ ids }),
     })
   },
+
+  suggest(q: string) {
+    const s = (q ?? '').trim()
+    if (s.length < 2) return Promise.resolve([])
+    return http<Array<{ id: string; name: string; type: 'CORE' | 'CUSTOM'; group: { id: string; name: string } }>>(
+      `/competencies/suggest?q=${encodeURIComponent(s)}`,
+    )
+  },
+
+  createCustom(dto:{ name: string; groupId: string }) {
+    return http<Competency>('/competencies/custom', { method: 'POST', body: JSON.stringify(dto) })
+  }
 }

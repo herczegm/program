@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common'
 import { CompetenciesService } from './competencies.service'
 import { CreateCompetencyDto } from './dto/create-competency.dto'
 import { UpdateCompetencyDto } from './dto/update-competency.dto'
@@ -6,6 +6,8 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard'
 import { RolesGuard } from '../auth/roles.guard'
 import { Roles } from '../auth/roles.decorator'
 import { ReorderCompetenciesDto } from './dto/reorder-competencies.dto'
+import type { Request } from 'express'
+import { CreateCustomCompetencyDto } from './dto/create-custom-competency.dto'
 
 @UseGuards(JwtAuthGuard)
 @Controller('competencies')
@@ -24,6 +26,14 @@ export class CompetenciesController {
   @Post()
   create(@Body() dto: CreateCompetencyDto) {
     return this.service.create(dto)
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  @Post('custom')
+  createCustom(@Req() req: Request, @Body() dto: CreateCustomCompetencyDto) {
+    const actorUserId = (req as any).user.userId
+    return this.service.createCustom(actorUserId, dto)
   }
 
   @UseGuards(RolesGuard)
