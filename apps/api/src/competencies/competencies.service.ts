@@ -129,4 +129,24 @@ export class CompetenciesService {
     return this.findAllActive()
   }
   
+  async suggest(q: string) {
+    const query = q.trim()
+    if (query.length < 2) return []
+
+    return this.prisma.competency.findMany({
+      where: {
+        isDeleted: false,
+        group: { isDeleted: false },
+        name: { contains: query, mode: 'insensitive' },
+      },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        group: { select: { id: true, name: true } },
+      },
+      orderBy: [{ name: 'asc' }],
+      take: 20,
+    })
+  }
 }

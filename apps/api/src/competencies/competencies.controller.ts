@@ -66,4 +66,10 @@ export class CompetenciesController {
     return this.service.softDelete(id)
   }
 
+  @Get('suggest')
+  suggest(@Query('q') q?: string) {
+    const query = q?.trim() ?? ''
+    if (query.length < 2 ) return []
+    return this.service.suggest(query)
+  }
 }
