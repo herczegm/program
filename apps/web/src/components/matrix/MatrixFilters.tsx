@@ -6,15 +6,20 @@ export type MatrixFiltersState = {
   groupId: string | 'ALL'
   includeAdmins: boolean
   includeDeleted: boolean
+  levelCompetencyId?: string
+  minLevel?: number
+  exactLevel?: number
 }
 
 export function MatrixFilters({
   groups,
+  columns,
   value,
   onChange,
   disabled,
 }: {
   groups: Array<{ id: string; name: string }>
+  columns: Array<{ id: string; name: string }>
   value: MatrixFiltersState
   onChange: (next: MatrixFiltersState) => void
   disabled?: boolean
@@ -23,6 +28,7 @@ export function MatrixFilters({
 
   return (
     <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+      {/* user search */}
       <label style={lbl}>
         Search user:
         <input
@@ -34,6 +40,7 @@ export function MatrixFilters({
         />
       </label>
 
+      {/* type select */}
       <label style={lbl}>
         Type:
         <select
@@ -48,6 +55,7 @@ export function MatrixFilters({
         </select>
       </label>
 
+      {/* group select */}
       <label style={lbl}>
         Group:
         <select
@@ -64,6 +72,69 @@ export function MatrixFilters({
         </select>
       </label>
 
+      {/* level filter */}
+      <label style={lbl}>
+        Level filter:
+        <select
+          style={inp}
+          disabled={disabled}
+          value={value.levelCompetencyId || ''}
+          onChange={(e) => {
+            const id = e.target.value
+            if (!id) {
+              onChange({ ...value, levelCompetencyId: '', minLevel: undefined, exactLevel: undefined })
+            } else {
+              // default: minLevel=2 (kényelmes)
+              onChange({ ...value, levelCompetencyId: id, minLevel: value.minLevel ?? 2, exactLevel: undefined })
+            }
+          }}
+        >
+          <option value="">(none)</option>
+          {columns.map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+      </label>
+
+      <label style={lbl}>
+        Mode:
+        <select
+          style={inp}
+          disabled={disabled || !value.levelCompetencyId}
+          value={value.exactLevel !== undefined ? 'EXACT' : value.minLevel !== undefined ? 'MIN' : 'MIN'}
+          onChange={(e) => {
+            const mode = e.target.value
+            if (mode === 'EXACT') {
+              onChange({ ...value, exactLevel: value.exactLevel ?? (value.minLevel ?? 2), minLevel: undefined })
+            } else {
+              onChange({ ...value, minLevel: value.minLevel ?? (value.exactLevel ?? 2), exactLevel: undefined })
+            }
+          }}
+        >
+          <option value="MIN">≥</option>
+          <option value="EXACT">=</option>
+        </select>
+      </label>
+
+      <label style={lbl}>
+        Level:
+        <select
+          style={inp}
+          disabled={disabled || !value.levelCompetencyId}
+          value={String(value.exactLevel ?? value.minLevel ?? 2)}
+          onChange={(e) => {
+            const n = Number(e.target.value)
+            if (value.exactLevel !== undefined) onChange({ ...value, exactLevel: n })
+            else onChange({ ...value, minLevel: n, exactLevel: undefined })
+          }}
+        >
+          {[0, 1, 2, 3].map((n) => (
+            <option key={n} value={n}>{n}</option>
+          ))}
+        </select>
+      </label>
+
+      {/* checkboxok*/}
       <label style={{ ...lbl, gap: 6 }}>
         <input
           type="checkbox"

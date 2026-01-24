@@ -36,8 +36,20 @@ function parseFiltersFromUrl(sp: URLSearchParams): MatrixFiltersState {
 
   const includeAdmins = parseBool(sp.get('includeAdmins'), true)
   const includeDeleted = parseBool(sp.get('includeDeleted'), false)
+  
+  const levelCompetencyId = (sp.get('levelCompetencyId') ?? '').trim()
+  const minLevelRaw = sp.get('minLevel')
+  const exactLevelRaw = sp.get('exactLevel')
+  const minLevel = minLevelRaw == null ? undefined : Number(minLevelRaw)
+  const exactLevel = exactLevelRaw == null ? undefined : Number(exactLevelRaw)
+  // ha mindkettő lenne, preferáljuk az exact-et (UI amúgy sem fogja így állítani)
+  const normalized = {
+    levelCompetencyId,
+    minLevel: exactLevelRaw != null ? undefined : minLevel,
+    exactLevel: exactLevelRaw != null ? exactLevel : undefined,
+  }
 
-  return { q, type, groupId, includeAdmins, includeDeleted }
+  return { q, type, groupId, includeAdmins, includeDeleted, ...normalized }
 }
 
 function filtersToUrlParams(f: MatrixFiltersState): URLSearchParams {
@@ -52,6 +64,10 @@ function filtersToUrlParams(f: MatrixFiltersState): URLSearchParams {
   if (f.includeAdmins === false) sp.set('includeAdmins', '0')
   if (f.includeDeleted === true) sp.set('includeDeleted', '1')
 
+  if (f.levelCompetencyId) sp.set('levelCompetencyId', f.levelCompetencyId)
+  if (f.exactLevel !== undefined) sp.set('exactLevel', String(f.exactLevel))
+  else if (f.minLevel !== undefined) sp.set('minLevel', String(f.minLevel))
+
   return sp
 }
 
@@ -61,7 +77,10 @@ function sameFilters(a: MatrixFiltersState, b: MatrixFiltersState) {
     a.type === b.type &&
     a.groupId === b.groupId &&
     a.includeAdmins === b.includeAdmins &&
-    a.includeDeleted === b.includeDeleted
+    a.includeDeleted === b.includeDeleted &&
+    a.levelCompetencyId === b.levelCompetencyId &&
+    a.minLevel === b.minLevel &&
+    a.exactLevel === b.exactLevel
   )
 }
 
@@ -122,6 +141,9 @@ export function MatrixPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
         type: filtersNow.type !== 'ALL' ? (filtersNow.type as any) : undefined,
         includeAdmins: filtersNow.includeAdmins,
         includeDeleted: filtersNow.includeDeleted,
+        levelCompetencyId: filtersNow.levelCompetencyId || undefined,
+        minLevel: filtersNow.minLevel,
+        exactLevel: filtersNow.exactLevel,
       })
 
       setData(m)
@@ -157,7 +179,18 @@ export function MatrixPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
   useEffect(() => {
     loadWith({ ...filters, q: debouncedQ })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.type, filters.groupId, filters.includeAdmins, filters.includeDeleted, debouncedQ])
+  }, [filters.type, filters.groupId, filters.includeAdmins, filters.includeDeleted, filters.levelCompetencyId, filters.minLevel, filters.exactLevel, debouncedQ])
+
+  // ha eltűnik a kiválasztott kompetencia a columns-ból, reseteljük a level filtert
+  useEffect(() => {
+    if (!data) return
+    if (!filters.levelCompetencyId) return
+    const ok = data.columns.some((c) => c.id === filters.levelCompetencyId)
+    if (!ok) {
+      setFilters((prev) => ({ ...prev, levelCompetencyId: '', minLevel: undefined, exactLevel: undefined }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, filters.levelCompetencyId])
 
   function applyLocalCell(userId: string, competencyId: string, level: number) {
     if (!data) return
@@ -256,6 +289,7 @@ export function MatrixPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
     <div style={{ display: 'grid', gap: 10 }}>
       <MatrixFilters
         groups={groups}
+        columns={data.columns.map((c) => ({ id: c.id, name: c.name }))}
         value={filters}
         onChange={(next) => {
           // bulk módban ne veszítsünk mentetlen változást véletlen filter váltással:
