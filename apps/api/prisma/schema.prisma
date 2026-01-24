@@ -27,7 +27,8 @@ model User {
 
   role Role @default(USER)
 
-  competencyLevels UserCompetencyLevel[]
+  competencyLevels  UserCompetencyLevel[]
+  competencyTargets UserCompetencyTarget[]
 
   createdCompetencies Competency[] @relation("CompetencyCreatedBy")
 
@@ -69,6 +70,7 @@ model Competency {
   isDeleted Boolean @default(false)
 
   userLevels UserCompetencyLevel[]
+  targets    UserCompetencyTarget[]
 
   status CompetencyStatus @default(ACTIVE)
 
@@ -98,6 +100,25 @@ model UserCompetencyLevel {
   @@index([competencyId])
 }
 
+model UserCompetencyTarget {
+  userId       String
+  competencyId String
+
+  targetLevel Int
+  deadline    DateTime?
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  competency Competency @relation(fields: [competencyId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([userId, competencyId]) // ✅ 0/1 target user+competency páronként
+  @@index([competencyId])
+  @@index([userId])
+  @@index([deadline])
+}
+
 model CompetencyLevelChange {
   id String @id @default(uuid())
 
@@ -114,7 +135,13 @@ model CompetencyLevelChange {
   target     User       @relation("TargetChanges", fields: [targetUserId], references: [id])
   competency Competency @relation(fields: [competencyId], references: [id])
 
-  @@index([targetUserId, createdAt])
+  // growth: gyors "last change per (user, competency) up to time"
+  @@index([targetUserId, competencyId, createdAt])
+
+  // audit feed-ekhez megmarad
   @@index([actorUserId, createdAt])
-  @@index([competencyId, createdAt])
+  @@index([targetUserId, createdAt])
+
+  // opcionális: ha sokszor competency->users irányból kérdezel
+  @@index([competencyId, targetUserId, createdAt])
 }

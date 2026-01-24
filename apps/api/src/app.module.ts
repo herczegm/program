@@ -10,6 +10,8 @@ import { CompetencyGroupModule } from './competency-group/competency-group.modul
 import { CompetenciesModule } from './competencies/competencies.module';
 import { UserLevelsModule } from './user-levels/user-levels.module';
 import { MatrixModule } from './matrix/matrix.module';
+import { TargetsModule } from './targets/targets.module';
+import { GrowthModule } from './growth/growth.module';
 
 @Module({
   imports: [
@@ -22,6 +24,8 @@ import { MatrixModule } from './matrix/matrix.module';
     CompetenciesModule,
     UserLevelsModule,
     MatrixModule,
+    TargetsModule,
+    GrowthModule,
   ],
   controllers: [AppController],
   providers: [AppService],
