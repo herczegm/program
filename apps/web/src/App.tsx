@@ -82,7 +82,7 @@ export default function App() {
                 path="/users/:id"
                 element={
                   <RequireAuth me={me}>
-                    <UserDetailPage meRole={me.role} />
+                    <UserDetailPage me={me} />
                   </RequireAuth>
                 }
               />

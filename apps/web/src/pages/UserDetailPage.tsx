@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { matrixService, type MatrixFast } from '../services/matrixService'
 import { UserLevelChanges } from '../components/user/UserLevelChanges'
 import { useBeforeUnload } from '../hooks/useBeforeUnload'
 import { SaveBar } from '../components/common/SaveBar'
+import type { Me } from '../state/authStore'
 
 type EditMode = 'inline' | 'bulk'
 type DirtyMap = Record<string, number> // key = `${userId}:${competencyId}`
@@ -68,8 +69,9 @@ function sameFilters(a: UserDetailFilters, b: UserDetailFilters) {
   )
 }
 
-export function UserDetailPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
+export function UserDetailPage({ me }: { me: Me }) {
   const { id } = useParams()
+  const isSelf = !!id && id === me.id
   const navigate = useNavigate()
   const loc = useLocation()
 
@@ -84,8 +86,10 @@ export function UserDetailPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
   const [mode, setMode] = useState<EditMode>('inline')
   const [dirty, setDirty] = useState<DirtyMap>({})
   const [saving, setSaving] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
+  const toastTimerRef = useRef<number | null>(null);
 
-  const editable = meRole === 'ADMIN'
+  const editable = me.role === 'ADMIN' || isSelf
 
   const user = data?.rows?.[0] ?? null
 
@@ -122,7 +126,9 @@ export function UserDetailPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
       setData(m)
       setDirty({})
     } catch (e: any) {
-      setError(e?.message ?? String(e))
+      const msg = e?.message ?? String(e)
+      setError(msg)
+      showToast(msg)
     } finally {
       setLoading(false)
     }
@@ -144,6 +150,12 @@ export function UserDetailPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
     if (nextStr !== cur) setSp(next, { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters])
+
+  function showToast(msg: string) {
+    setToast(msg)
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+    toastTimerRef.current = window.setTimeout(() => setToast(null), 3000)
+  }
 
   function getLevel(competencyId: string, colIdx: number) {
     if (!user || !data) return 0
@@ -183,10 +195,16 @@ export function UserDetailPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
 
     applyLocal(competencyId, level)
     try {
-      await matrixService.setCell(user.userId, competencyId, level)
+      if (isSelf) {
+        await matrixService.setSelfCell(competencyId, level)
+      } else {
+        await matrixService.setCell(user.userId, competencyId, level)
+      }
     } catch (e: any) {
       applyLocal(competencyId, prev)
-      setError(e?.message ?? String(e))
+      const msg = e?.message ?? String(e)
+      setError(msg)
+      showToast(msg)
     }
   }
 
@@ -203,12 +221,18 @@ export function UserDetailPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
     setSaving(true)
     setError('')
     try {
-      await matrixService.setCells(cells)
+      if (isSelf) {
+        await matrixService.setSelfCells(cells.map((c) => ({ competencyId: c.competencyId, level: c.level })))
+      } else {
+        await matrixService.setCells(cells)
+      }
       // commit local
       for (const c of cells) applyLocal(c.competencyId, c.level)
       setDirty({})
     } catch (e: any) {
-      setError(e?.message ?? String(e))
+      const msg = e?.message ?? String(e)
+      setError(msg)
+      showToast(msg)
     } finally {
       setSaving(false)
     }
@@ -222,6 +246,16 @@ export function UserDetailPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
 
   return (
     <div style={{ display: 'grid', gap: 10 }}>
+      {toast ? (
+        <div style={{
+          position: 'fixed', right: 16, bottom: 16,
+          padding: '10px 12px', border: '1px solid #ddd', borderRadius: 12, background: '#fff',
+          boxShadow: '0 6px 30px rgba(0,0,0,0.10)'
+        }}>
+          {toast}
+        </div>
+      ) : null}
+
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <button onClick={() => {
           if (mode === 'bulk' && Object.keys(dirty).length > 0) {
@@ -237,13 +271,17 @@ export function UserDetailPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
         </Link>
         <button onClick={load} disabled={loading}>Refresh</button>
 
-        <span style={{ marginLeft: 8, fontSize: 12, opacity: 0.8 }}>Mode:</span>
-        <button onClick={() => { setMode('inline'); setDirty({}) }} disabled={!editable} style={mode === 'inline' ? btnActive : undefined}>
-          Inline
-        </button>
-        <button onClick={() => setMode('bulk')} disabled={!editable} style={mode === 'bulk' ? btnActive : undefined}>
-          Bulk
-        </button>
+        {editable ? (
+          <>
+            <span style={{ marginLeft: 8, fontSize: 12, opacity: 0.8 }}>Mode:</span>
+            <button onClick={() => { setMode('inline'); setDirty({}) }} disabled={!editable} style={mode === 'inline' ? btnActive : undefined}>
+              Inline
+            </button>
+            <button onClick={() => setMode('bulk')} disabled={!editable} style={mode === 'bulk' ? btnActive : undefined}>
+              Bulk
+            </button>
+          </>
+        ) : null}
 
         <label style={{ fontSize: 12, opacity: 0.85 }}>
           Type:{' '}
@@ -342,8 +380,8 @@ export function UserDetailPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
                           <span style={{ fontSize: 12, opacity: 0.7 }}>{c.type}</span>
                         </div>
 
-                        <button
-                          disabled={!editable}
+                        {editable ? (
+                          <button
                           onClick={() => setOne(c.id, nextLevel(lvl))}
                           onKeyDown={(e) => {
                             if (!editable) return
@@ -352,18 +390,21 @@ export function UserDetailPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
                               setOne(c.id, Number(e.key))
                             }
                           }}
-                          style={{
-                            minWidth: 52,
-                            borderRadius: 999,
-                            border: '1px solid #ddd',
-                            padding: '4px 10px',
-                            cursor: editable ? 'pointer' : 'default',
-                            background: '#fff',
-                          }}
-                          title={editable ? 'Click: next • Keys: 0-3' : 'Nincs jogosultság'}
+                          // style={{
+                          //   minWidth: 52,
+                          //   borderRadius: 999,
+                          //   border: '1px solid #ddd',
+                          //   padding: '4px 10px',
+                          //   cursor: editable ? 'pointer' : 'default',
+                          //   background: '#fff',
+                          // }}
+                          // title={editable ? 'Click: next • Keys: 0-3' : 'Nincs jogosultság'}
                         >
                           {lvl}
                         </button>
+                        ) : (
+                          <span title='Read-only'>{lvl}</span>
+                        )}
                       </div>
                     )
                   })}

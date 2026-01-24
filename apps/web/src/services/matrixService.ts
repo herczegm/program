@@ -45,4 +45,19 @@ export const matrixService = {
       body: JSON.stringify({ cells }),
     })
   },
+
+  setSelfCell(competencyId: string, level: number) {
+    return http('/matrix/self/cell', {
+      method: 'PATCH',
+      body: JSON.stringify({ competencyId, level }),
+    })
+  },
+
+  setSelfCells(items: Array<{ competencyId: string; level: number }>) {
+    return http('/matrix/self/cells', {
+      method: 'PATCH',
+      body: JSON.stringify({ items }),
+    })
+  }
+
 }
