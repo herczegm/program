@@ -9,6 +9,7 @@ export type MatrixFiltersState = {
   levelCompetencyId?: string
   minLevel?: number
   exactLevel?: number
+  growthDays: 30 | 90 | 180
 }
 
 export function MatrixFilters({
@@ -134,6 +135,20 @@ export function MatrixFilters({
         </select>
       </label>
 
+      <label style={lbl}>
+        Growth:
+        <select
+          style={inp}
+          disabled={disabled}
+          value={value.growthDays}
+          onChange={(e) => onChange({ ...value, growthDays: Number(e.target.value) as any })}
+        >
+          <option value={30}>30 nap</option>
+          <option value={90}>90 nap</option>
+          <option value={180}>180 nap</option>
+        </select>
+      </label>
+      
       {/* checkboxok*/}
       <label style={{ ...lbl, gap: 6 }}>
         <input

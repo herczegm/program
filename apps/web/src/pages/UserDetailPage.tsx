@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { matrixService, type MatrixFast } from '../services/matrixService'
+import { competenciesService, type CompetencySuggestItem } from '../services/competenciesService'
+import { competencyGroupsService } from '../services/competencyGroupsService'
+import { targetsService, type Target } from '../services/targetsService'
+import { ApiError } from '../api/http'
 import { UserLevelChanges } from '../components/user/UserLevelChanges'
 import { useBeforeUnload } from '../hooks/useBeforeUnload'
 import { SaveBar } from '../components/common/SaveBar'
@@ -69,6 +73,28 @@ function sameFilters(a: UserDetailFilters, b: UserDetailFilters) {
   )
 }
 
+function useDebounced<T>(value: T, ms: number) {
+  const [v, setV] = useState(value)
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms)
+    return () => clearTimeout(t)
+  }, [value, ms])
+  return v
+}
+
+type TargetMap = Record<string, Target>
+
+function fmtDate(d: string | null | undefined) {
+  if (!d) return ''
+  return String(d).slice(0, 10)
+}
+
+function targerTooltip(t?: Target) {
+  if (!t) return 'Cél: (nincs)'
+  const dl = fmtDate(t.deadline)
+  return dl ? `Cél: ${t.targetLevel} • Határidő: ${dl}` : `Cél: ${t.targetLevel}`
+}
+
 export function UserDetailPage({ me }: { me: Me }) {
   const { id } = useParams()
   const isSelf = !!id && id === me.id
@@ -89,7 +115,25 @@ export function UserDetailPage({ me }: { me: Me }) {
   const [toast, setToast] = useState<string | null>(null)
   const toastTimerRef = useRef<number | null>(null);
 
+  // custom create UI
+  const [customName, setCustomName] = useState('')
+  const debouncedCustomName = useDebounced(customName, 250)
+  const [customGroups, setCustomGroups] = useState<Array<{ id: string; name: string }>>([])
+  const [customGroupId, setCustomGroupId] = useState<string>('')
+
+  const [suggestions, setSuggestions] = useState<CompetencySuggestItem[]>([])
+  const [suggestLoading, setSuggestLoading] = useState(false)
+  const [creating, setCreating] = useState(false)
+
+  const [targets, setTargets] = useState<TargetMap>({})
+const [editingTargetId, setEditingTargetId] = useState<string | null>(null)
+const [draftTargetLevel, setDraftTargetLevel] = useState<number>(2)
+const [draftDeadline, setDraftDeadline] = useState<string>('') // YYYY-MM-DD
+const [savingTarget, setSavingTarget] = useState(false)
+
   const editable = me.role === 'ADMIN' || isSelf
+
+  const canEditTarget = me.role === 'ADMIN' || isSelf
 
   const user = data?.rows?.[0] ?? null
 
@@ -125,12 +169,119 @@ export function UserDetailPage({ me }: { me: Me }) {
       })
       setData(m)
       setDirty({})
+      const loadedUser = m.rows?.[0]
+      if (loadedUser) {
+        await loadTargetsFor(loadedUser.userId, isSelf)
+      }
     } catch (e: any) {
       const msg = e?.message ?? String(e)
       setError(msg)
       showToast(msg)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function loadTargetsFor(userId: string, self: boolean) {
+    try {
+      const list = self ? await targetsService.listSelf() : await targetsService.listForUser(userId)
+      const map: TargetMap = {}
+      for (const t of list) map[t.competencyId] = t
+      setTargets(map)
+    } catch {
+      // ha nincs jog / nincs endpoint, ne ölje meg az oldalt
+      setTargets({})
+    }
+  }
+
+  function showToast(msg: string) {
+    setToast(msg)
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+    toastTimerRef.current = window.setTimeout(() => setToast(null), 3000)
+  }
+
+  function messageFromApiError(e: unknown) {
+    if (!(e instanceof ApiError)) return (e as any)?.message ?? String(e)
+    const txt = (e.bodyText ?? '').trim()
+    if (!txt) return e.message
+    try {
+      const parsed = JSON.parse(txt)
+      if (typeof parsed?.message === 'string') return parsed.message
+    } catch { }
+    return txt || e.message
+  }
+
+  // group lista (1x)
+  useEffect(() => {
+    competencyGroupsService
+      .listActive()
+      .then((gs) => {
+        const list = gs.map((g) => ({ id: g.id, name: g.name }))
+        setCustomGroups(list)
+        setCustomGroupId((prev) => prev || list[0]?.id || '')
+      })
+      .catch(() => {
+        setCustomGroups([])
+        setCustomGroupId('')
+      })
+  }, [])
+
+  // suggest (2 char-tól)
+  useEffect(() => {
+    const q = debouncedCustomName.trim()
+    if (q.length < 2) {
+      setSuggestions([])
+      return
+    }
+
+    let alive = true
+    setSuggestLoading(true)
+    competenciesService
+      .suggest(q)
+      .then((items) => {
+        if (!alive) return
+        setSuggestions(items)
+      })
+      .catch(() => {
+        if (!alive) return
+        setSuggestions([])
+      })
+      .finally(() => {
+        if (!alive) return
+        setSuggestLoading(false)
+      })
+
+    return () => {
+      alive = false
+    }
+  }, [debouncedCustomName])
+
+  async function createCustomFromInput(nameOverride?: string) {
+    const name = (nameOverride ?? customName).trim()
+    if (name.length < 2) return
+    if (!customGroupId) {
+      setError('Válassz csoportot a custom kompetenciához.')
+      return
+    }
+
+    setCreating(true)
+    setError('')
+
+    try {
+      await competenciesService.createCustom({ name, groupId: customGroupId })
+      setCustomName('')
+      setSuggestions([])
+      showToast('Custom kompetencia felvéve')
+      await load() // újratölti a user detail mátrixot (új oszlop)
+    } catch (e: any) {
+      const msg = messageFromApiError(e)
+      if (e instanceof ApiError && e.status === 409) {
+        setError(msg || 'Név ütközés (már létezik).')
+      } else {
+        setError(msg)
+      }
+    } finally {
+      setCreating(false)
     }
   }
 
@@ -150,12 +301,6 @@ export function UserDetailPage({ me }: { me: Me }) {
     if (nextStr !== cur) setSp(next, { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters])
-
-  function showToast(msg: string) {
-    setToast(msg)
-    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
-    toastTimerRef.current = window.setTimeout(() => setToast(null), 3000)
-  }
 
   function getLevel(competencyId: string, colIdx: number) {
     if (!user || !data) return 0
@@ -247,11 +392,19 @@ export function UserDetailPage({ me }: { me: Me }) {
   return (
     <div style={{ display: 'grid', gap: 10 }}>
       {toast ? (
-        <div style={{
-          position: 'fixed', right: 16, bottom: 16,
-          padding: '10px 12px', border: '1px solid #ddd', borderRadius: 12, background: '#fff',
-          boxShadow: '0 6px 30px rgba(0,0,0,0.10)'
-        }}>
+        <div
+          style={{
+            position: 'fixed',
+            right: 16,
+            bottom: 16,
+            padding: '10px 12px',
+            border: '1px solid #ddd',
+            borderRadius: 12,
+            background: '#fff',
+            boxShadow: '0 6px 30px rgba(0,0,0,0.10)',
+            zIndex: 50,
+          }}
+        >
           {toast}
         </div>
       ) : null}
@@ -351,6 +504,91 @@ export function UserDetailPage({ me }: { me: Me }) {
             {user.displayName ? <span style={{ fontSize: 12, opacity: 0.8 }}>{user.displayName}</span> : null}
           </div>
 
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
+            <div style={{ position: 'relative', minWidth: 360 }}>
+              <input
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+                placeholder="Új custom kompetencia… (min. 2 karakter)"
+                style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid #ddd', width: '100%' }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    createCustomFromInput()
+                  }
+                  if (e.key === 'Escape') setSuggestions([])
+                }}
+              />
+
+              {suggestions.length > 0 ? (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 6px)',
+                    left: 0,
+                    right: 0,
+                    border: '1px solid #ddd',
+                    borderRadius: 10,
+                    background: '#fff',
+                    boxShadow: '0 10px 40px rgba(0,0,0,0.10)',
+                    maxHeight: 260,
+                    overflow: 'auto',
+                    zIndex: 20,
+                  }}
+                >
+                  {suggestions.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => createCustomFromInput(s.name)}
+                      style={{
+                        display: 'flex',
+                        width: '100%',
+                        justifyContent: 'space-between',
+                        gap: 10,
+                        padding: '8px 10px',
+                        border: 'none',
+                        background: 'transparent',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                      }}
+                      title="Click: felvesz"
+                    >
+                      <span style={{ fontWeight: 600 }}>{s.name}</span>
+                      <span style={{ fontSize: 12, opacity: 0.7 }}>
+                        {s.type} • {s.group?.name ?? ''}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              {suggestLoading ? <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>Ajánlások…</div> : null}
+            </div>
+
+            <label style={{ fontSize: 12, opacity: 0.9, display: 'flex', gap: 6, alignItems: 'center' }}>
+              Group:
+              <select
+                value={customGroupId}
+                onChange={(e) => setCustomGroupId(e.target.value)}
+                style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid #ddd' }}
+              >
+                {customGroups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <button
+              onClick={() => createCustomFromInput()}
+              disabled={creating || customName.trim().length < 2 || !customGroupId}
+              title="Enter-rel is megy"
+            >
+              {creating ? 'Felvétel…' : 'Felvesz'}
+            </button>
+          </div>
+
           <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
             {groups.map((g) => (
               <div key={g.groupId} style={{ borderTop: '1px solid #eee', paddingTop: 10 }}>
@@ -361,6 +599,8 @@ export function UserDetailPage({ me }: { me: Me }) {
                     const colIdx = data!.colIndexById[c.id]
                     const lvl = getLevel(c.id, colIdx)
                     const isDirty = dirty[keyOf(user.userId, c.id)] !== undefined
+                    const t = targets[c.id]
+                    const tt = targerTooltip(t)
 
                     return (
                       <div
@@ -382,6 +622,7 @@ export function UserDetailPage({ me }: { me: Me }) {
 
                         {editable ? (
                           <button
+                          title={tt}
                           onClick={() => setOne(c.id, nextLevel(lvl))}
                           onKeyDown={(e) => {
                             if (!editable) return
@@ -403,8 +644,100 @@ export function UserDetailPage({ me }: { me: Me }) {
                           {lvl}
                         </button>
                         ) : (
-                          <span title='Read-only'>{lvl}</span>
+                          <span title={`Read-only: ${tt}`}>{lvl}</span>
                         )}
+                        {canEditTarget ? (
+                          <button
+                            title={t ? 'Cél szerkesztése' : 'Cél beállítása'}
+                            onClick={() => {
+                              setEditingTargetId(c.id)
+                              setDraftTargetLevel(t?.targetLevel ?? 2)
+                              setDraftDeadline(fmtDate(t?.deadline) || '')
+                            }}
+                            style={{ marginLeft: 8 }}
+                          >
+                            🎯
+                          </button>
+                        ) : null}
+                        {editingTargetId === c.id ? (
+                          <div style={{ marginTop: 6, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 12, opacity: 0.8 }}>Cél:</span>
+
+                            <select
+                              value={draftTargetLevel}
+                              onChange={(e) => setDraftTargetLevel(Number(e.target.value))}
+                              disabled={savingTarget}
+                            >
+                              {[1, 2, 3].map((n) => (
+                                <option key={n} value={n}>{n}</option>
+                              ))}
+                            </select>
+
+                            <span style={{ fontSize: 12, opacity: 0.8 }}>Határidő:</span>
+                            <input
+                              type="date"
+                              value={draftDeadline}
+                              onChange={(e) => setDraftDeadline(e.target.value)}
+                              disabled={savingTarget}
+                            />
+
+                            <button
+                              disabled={savingTarget}
+                              onClick={async () => {
+                                if (!user) return
+                                setSavingTarget(true)
+                                setError('')
+                                try {
+                                  const deadline = draftDeadline.trim() ? draftDeadline.trim() : null
+                                  const saved = isSelf
+                                    ? await targetsService.upsertSelfCell(c.id, draftTargetLevel, deadline)
+                                    : await targetsService.upsertCell(user.userId, c.id, draftTargetLevel, deadline)
+
+                                  setTargets((prev) => ({ ...prev, [c.id]: saved }))
+                                  setEditingTargetId(null)
+                                  showToast(`Cél mentve: ${saved.targetLevel}${saved.deadline ? ` • ${fmtDate(saved.deadline)}` : ''}`)
+                                } catch (e: any) {
+                                  setError(e?.message ?? String(e))
+                                } finally {
+                                  setSavingTarget(false)
+                                }
+                              }}
+                            >
+                              {savingTarget ? 'Mentés…' : 'Mentés'}
+                            </button>
+
+                            <button
+                              disabled={savingTarget}
+                              onClick={async () => {
+                                if (!user) return
+                                setSavingTarget(true)
+                                setError('')
+                                try {
+                                  if (isSelf) await targetsService.deleteSelfCell(c.id)
+                                  else await targetsService.deleteCell(user.userId, c.id)
+
+                                  setTargets((prev) => {
+                                    const copy = { ...prev }
+                                    delete copy[c.id]
+                                    return copy
+                                  })
+                                  setEditingTargetId(null)
+                                  showToast('Cél törölve')
+                                } catch (e: any) {
+                                  setError(e?.message ?? String(e))
+                                } finally {
+                                  setSavingTarget(false)
+                                }
+                              }}
+                            >
+                              Törlés
+                            </button>
+
+                            <button disabled={savingTarget} onClick={() => setEditingTargetId(null)}>
+                              Mégse
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
                     )
                   })}

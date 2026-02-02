@@ -35,11 +35,24 @@ function LevelPill({ level }: { level: number }) {
   )
 }
 
+function Stars({ v }: { v: number }) {
+  // pozitív growth -> csillagok; negatív -> mínusz jelzés (opcionális)
+  const n = Math.max(0, Math.min(3, Math.floor(v)))
+  const down = v < 0
+  return (
+    <span style={{ fontSize: 12, opacity: 0.85, marginLeft: 6, color: down ? 'crimson' : 'inherit' }} title={`Growth: ${v}`}>
+      {down ? '↓' : ''}
+      {'★'.repeat(n)}
+    </span>
+  )
+}
+
 export function VirtualMatrixTable({
   data,
   editable,
   mode,
   dirty,
+  growth,
   onCellClick,
   onUserClick,
 }: {
@@ -47,6 +60,7 @@ export function VirtualMatrixTable({
   editable: boolean
   mode: EditMode
   dirty: DirtyMap
+  growth?: Record<string, number> 
   onCellClick: (userId: string, competencyId: string, nextLevel: number) => void
   onUserClick?: (userId: string) => void
 }) {
@@ -175,6 +189,7 @@ export function VirtualMatrixTable({
           <div style={{ position: 'relative', width: totalW, height: 42 }}>
             {virtualCols.map((vc) => {
               const c = columns[vc.index]
+
               return (
                 <div
                   key={c.id}
@@ -254,6 +269,16 @@ export function VirtualMatrixTable({
                   const canEdit = editable
                   const dirtyKey = keyOf(r.userId, competencyId)
                   const isDirty = dirty[dirtyKey] !== undefined
+                  const gr = growth?.[dirtyKey] ?? 0
+                  const editTitle = canEdit
+                    ? mode === 'inline'
+                      ? 'Click: mentés azonnal • 0-3: beállít'
+                      : 'Click: változás jelölve (Save kell) • 0-3: beállít'
+                    : 'Nincs jogosultság'
+
+                  const title = growth
+                    ? `${editTitle} • Growth: ${gr}`
+                    : editTitle
 
                   return (
                     <div
@@ -298,15 +323,12 @@ export function VirtualMatrixTable({
                       onBlur={(e) => {
                         ; (e.currentTarget as HTMLDivElement).style.boxShadow = ''
                       }}
-                      title={
-                        canEdit
-                          ? mode === 'inline'
-                            ? 'Click: mentés azonnal • 0-3: beállít'
-                            : 'Click: változás jelölve (Save kell) • 0-3: beállít'
-                          : 'Nincs jogosultság'
-                      }
+                      title={title}
                     >
-                      <LevelPill level={current} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <LevelPill level={current} />
+                        {growth ? <Stars v={gr} /> : null}
+                      </div>
                     </div>
                   )
                 })}

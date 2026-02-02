@@ -29,7 +29,7 @@ export class CompetenciesController {
   }
 
   @UseGuards(RolesGuard)
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'USER')
   @Post('custom')
   createCustom(@Req() req: Request, @Body() dto: CreateCustomCompetencyDto) {
     const actorUserId = (req as any).user.userId

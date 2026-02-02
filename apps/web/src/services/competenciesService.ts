@@ -8,9 +8,35 @@ export type Competency = {
   sortOrder: number
 }
 
+export type CompetencySuggestItem = {
+  id: string
+  name: string
+  type: 'CORE' | 'CUSTOM'
+  group: {
+    id: string
+    name: string
+  }
+}
+
 export const competenciesService = {
   list() {
     return http<Competency[]>('/competencies')
+  },
+
+  suggest(q: string) {
+    const qs = new URLSearchParams()
+    if (q.trim()) qs.set('q', q.trim())
+    const s = qs.toString()
+    return http<CompetencySuggestItem[]>(
+      `/competencies/suggest?${s ? `${s}` : ''}`,
+    )
+  },
+
+  createCustom(dto:{ name: string; groupId: string }) {
+    return http<Competency>('/competencies/custom', {
+      method: 'POST',
+      body: JSON.stringify(dto)
+    })
   },
 
   create(dto: { name: string; type?: 'CORE' | 'CUSTOM'; groupId: string; sortOrder?: number }) {
@@ -32,15 +58,4 @@ export const competenciesService = {
     })
   },
 
-  suggest(q: string) {
-    const s = (q ?? '').trim()
-    if (s.length < 2) return Promise.resolve([])
-    return http<Array<{ id: string; name: string; type: 'CORE' | 'CUSTOM'; group: { id: string; name: string } }>>(
-      `/competencies/suggest?q=${encodeURIComponent(s)}`,
-    )
-  },
-
-  createCustom(dto:{ name: string; groupId: string }) {
-    return http<Competency>('/competencies/custom', { method: 'POST', body: JSON.stringify(dto) })
-  }
 }

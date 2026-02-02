@@ -4,6 +4,7 @@ import { matrixService, type MatrixFast } from '../services/matrixService'
 import { MatrixTable, type EditMode } from '../components/matrix/MatrixTable'
 import { usersService } from '../services/usersService'
 import { competencyGroupsService } from '../services/competencyGroupsService'
+import { growthService } from '../services/growthService'
 import { MatrixFilters, type MatrixFiltersState } from '../components/matrix/MatrixFilters'
 import { VirtualMatrixTable } from '../components/matrix/VirtualMatrixTable'
 import { SaveBar } from '../components/common/SaveBar'
@@ -37,6 +38,10 @@ function parseFiltersFromUrl(sp: URLSearchParams): MatrixFiltersState {
   const includeAdmins = parseBool(sp.get('includeAdmins'), true)
   const includeDeleted = parseBool(sp.get('includeDeleted'), false)
   
+  const growthDaysRaw = sp.get('growthDays')
+  const growthDays: 30 | 90 | 180 =
+    growthDaysRaw === '30' || growthDaysRaw === '90' || growthDaysRaw === '180' ? (Number(growthDaysRaw) as any) : 90
+
   const levelCompetencyId = (sp.get('levelCompetencyId') ?? '').trim()
   const minLevelRaw = sp.get('minLevel')
   const exactLevelRaw = sp.get('exactLevel')
@@ -49,7 +54,7 @@ function parseFiltersFromUrl(sp: URLSearchParams): MatrixFiltersState {
     exactLevel: exactLevelRaw != null ? exactLevel : undefined,
   }
 
-  return { q, type, groupId, includeAdmins, includeDeleted, ...normalized }
+  return { q, type, groupId, includeAdmins, includeDeleted, growthDays, ...normalized }
 }
 
 function filtersToUrlParams(f: MatrixFiltersState): URLSearchParams {
@@ -68,6 +73,8 @@ function filtersToUrlParams(f: MatrixFiltersState): URLSearchParams {
   if (f.exactLevel !== undefined) sp.set('exactLevel', String(f.exactLevel))
   else if (f.minLevel !== undefined) sp.set('minLevel', String(f.minLevel))
 
+  sp.set('growthDays', String(f.growthDays ?? 90))
+
   return sp
 }
 
@@ -78,11 +85,18 @@ function sameFilters(a: MatrixFiltersState, b: MatrixFiltersState) {
     a.groupId === b.groupId &&
     a.includeAdmins === b.includeAdmins &&
     a.includeDeleted === b.includeDeleted &&
+    a.growthDays === b.growthDays &&
     a.levelCompetencyId === b.levelCompetencyId &&
     a.minLevel === b.minLevel &&
     a.exactLevel === b.exactLevel
   )
 }
+
+function gkey(userId: string, competencyId: string) {
+  return `${userId}:${competencyId}`
+}
+
+type GrowthMap = Record<string, number> // key = `${userId}:${competencyId}`
 
 export function MatrixPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
   const navigate = useNavigate()
@@ -98,7 +112,12 @@ export function MatrixPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
   const [saving, setSaving] = useState(false)
 
   const [groups, setGroups] = useState<Array<{ id: string; name: string }>>([])
-  const [filters, setFilters] = useState<MatrixFiltersState>(urlFilters)
+  const [filters, setFilters] = useState<MatrixFiltersState>({
+    ...urlFilters,
+    growthDays: urlFilters.growthDays ?? 90,
+  })
+
+  const [growth, setGrowth] = useState<GrowthMap>({})
 
   const editable = meRole === 'ADMIN'
 
@@ -149,6 +168,27 @@ export function MatrixPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
       setData(m)
       setDirty({})
       setPending({})
+
+      try {
+        const userIdsNow = m.rows.map(r => r.userId)
+        const compIdsNow = m.columns.map(c => c.id)
+
+        if (userIdsNow.length && compIdsNow.length) {
+          const res = await growthService.get({
+            days: filtersNow.growthDays ?? 90,
+            userIds: userIdsNow,
+            competencyIds: compIdsNow,
+          })
+          const map: GrowthMap = {}
+          for (const it of res.items) map[gkey(it.userId, it.competencyId)] = it.growth
+          setGrowth(map)
+        } else {
+          setGrowth({})
+        }
+      } catch {
+        setGrowth({})
+      }
+
     } catch (e: any) {
       setError(e?.message ?? String(e))
     } finally {
@@ -179,7 +219,7 @@ export function MatrixPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
   useEffect(() => {
     loadWith({ ...filters, q: debouncedQ })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.type, filters.groupId, filters.includeAdmins, filters.includeDeleted, filters.levelCompetencyId, filters.minLevel, filters.exactLevel, debouncedQ])
+  }, [filters.type, filters.groupId, filters.includeAdmins, filters.includeDeleted, filters.levelCompetencyId, filters.minLevel, filters.exactLevel, filters.growthDays, debouncedQ])
 
   // ha eltűnik a kiválasztott kompetencia a columns-ból, reseteljük a level filtert
   useEffect(() => {
@@ -353,6 +393,7 @@ export function MatrixPage({ meRole }: { meRole: 'USER' | 'ADMIN' }) {
         editable={editable}
         mode={mode}
         dirty={dirty}
+        growth={growth}
         onCellClick={handleCellClick}
         onUserClick={(userId) => {
           const qs = filtersToUrlParams(filters).toString()
